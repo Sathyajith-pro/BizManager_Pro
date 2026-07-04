@@ -1,6 +1,7 @@
 import dbConnect from "../../../lib/dbConnect";
 import Order from "../../../lib/Order";
 import { requireRole } from "../../../lib/auth";
+import { adjustStockForOrder } from "../../../lib/stockHelper";
 
 export default async function handler(req, res) {
   await dbConnect();
@@ -29,12 +30,19 @@ export default async function handler(req, res) {
       if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber;
       if (courier !== undefined) updateData.courier = courier;
 
+      const oldOrder = await Order.findById(id);
+      if (!oldOrder) return res.status(404).json({ error: "Order not found." });
+
       const order = await Order.findByIdAndUpdate(
         id,
         updateData,
         { new: true }
       );
       if (!order) return res.status(404).json({ error: "Order not found." });
+
+      // Run stock adjustment
+      await adjustStockForOrder(oldOrder, order);
+
       return res.status(200).json(order);
     } catch (err) {
       return res.status(500).json({ error: "Failed to update order status." });
@@ -49,21 +57,27 @@ export default async function handler(req, res) {
     }
 
     try {
-      const { name, address, phoneNumber, items, trackingNumber, courier, deliveryStatus, cashReceived, note } = req.body;
+      const { name, address, phoneNumber, items, totalPrice, trackingNumber, courier, deliveryStatus, cashReceived, note } = req.body;
       
-      if (!name || !address || !phoneNumber || !items || !Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ error: "Customer details and at least one item are required." });
+      if (!name || !address || !items || !Array.isArray(items) || items.length === 0 || totalPrice === undefined || totalPrice === "" || isNaN(Number(totalPrice))) {
+        return res.status(400).json({ error: "Customer name, address, at least one item, and Total Price (Rs.) are required." });
       }
 
-      // Re-calculate total price
-      const totalPrice = items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+      const oldOrder = await Order.findById(id);
+      if (!oldOrder) return res.status(404).json({ error: "Order not found." });
+
+      const finalTotalPrice = Number(totalPrice);
 
       const order = await Order.findByIdAndUpdate(
         id,
-        { name, address, phoneNumber, items, totalPrice, trackingNumber, courier, deliveryStatus, cashReceived, note },
+        { name, address, phoneNumber, items, totalPrice: finalTotalPrice, trackingNumber, courier, deliveryStatus, cashReceived, note },
         { new: true, runValidators: true }
       );
       if (!order) return res.status(404).json({ error: "Order not found." });
+
+      // Run stock adjustment
+      await adjustStockForOrder(oldOrder, order);
+
       return res.status(200).json(order);
     } catch (err) {
       console.error(err);
@@ -79,8 +93,14 @@ export default async function handler(req, res) {
     }
 
     try {
-      const order = await Order.findByIdAndDelete(id);
-      if (!order) return res.status(404).json({ error: "Order not found." });
+      const oldOrder = await Order.findById(id);
+      if (!oldOrder) return res.status(404).json({ error: "Order not found." });
+
+      await Order.findByIdAndDelete(id);
+
+      // Run stock adjustment
+      await adjustStockForOrder(oldOrder, null);
+
       return res.status(200).json({ message: "Order deleted." });
     } catch (err) {
       return res.status(500).json({ error: "Failed to delete order." });

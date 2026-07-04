@@ -934,6 +934,7 @@
   .tabsContainer { padding: 0 16px; overflow-x: auto; }
   .main { padding: 16px; }
   .filtersRow { flex-direction: column; align-items: stretch; }
+  .tableHeader { flex-wrap: wrap; gap: 12px; }
   
   .desktopTableOnly {
     display: none;
