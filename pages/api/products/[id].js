@@ -14,7 +14,7 @@ export default async function handler(req, res) {
 
   if (req.method === "PUT") {
     try {
-      const { name, stock, price, warranty } = req.body;
+      const { name, stock, price, commission, warranty } = req.body;
       if (!name || name.trim() === "") {
         return res.status(400).json({ error: "Product name is required." });
       }
@@ -34,6 +34,7 @@ export default async function handler(req, res) {
           name: name.trim(),
           stock: Number(stock) || 0,
           price: Number(price) || 0,
+          commission: Number(commission) || 0,
           warranty: (warranty || "").trim(),
         },
         { new: true, runValidators: true }

@@ -21,6 +21,7 @@ export default async function handler(req, res) {
       let totalSales = 0;
       let totalRevenue = 0;
       let pendingDeliveryVal = 0;
+      let totalCommissions = 0;
       let deliveryCounts = { Pending: 0, Delivered: 0, Return: 0, Completed: 0 };
       let cashCounts = { Yes: 0, No: 0 };
       let cashValue = { Yes: 0, No: 0 };
@@ -28,6 +29,7 @@ export default async function handler(req, res) {
       orders.forEach((o) => {
         const price = o.totalPrice || o.price || 0;
         totalSales += price;
+        totalCommissions += o.totalCommission || 0;
 
         const status = o.deliveryStatus || o.status || "Pending";
         if (deliveryCounts[status] !== undefined) {
@@ -57,13 +59,14 @@ export default async function handler(req, res) {
       });
 
       const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-      const netProfit = totalRevenue - totalExpenses;
+      const netProfit = totalRevenue - totalExpenses - totalCommissions;
 
       return res.status(200).json({
         totalSales,
         totalRevenue,
         pendingDeliveryVal,
         totalExpenses,
+        totalCommissions,
         netProfit,
         deliveryCounts,
         cashCounts,

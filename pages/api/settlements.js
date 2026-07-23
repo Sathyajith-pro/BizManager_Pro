@@ -14,7 +14,14 @@ export default async function handler(req, res) {
 
     try {
       const settlements = await Settlement.find({})
-        .populate("orders", "orderId name totalPrice")
+        .populate({
+          path: "orders",
+          select: "orderId name totalPrice totalCommission agent",
+          populate: {
+            path: "agent",
+            select: "name username"
+          }
+        })
         .sort({ dateTime: -1 });
       return res.status(200).json(settlements);
     } catch (err) {

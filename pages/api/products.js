@@ -6,8 +6,8 @@ export default async function handler(req, res) {
   await dbConnect();
 
   if (req.method === "GET") {
-    // Both Admin and Packer can view products (dropdown populated on client)
-    const auth = requireRole(req, ["admin", "packer"]);
+    // Both Admin, Packer and Agent can view products (dropdown populated on client)
+    const auth = requireRole(req, ["admin", "packer", "agent"]);
     if (!auth.authorized) {
       return res.status(auth.authenticated ? 403 : 401).json({ error: "Access denied. Login required." });
     }
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     }
 
     try {
-      const { name, stock, price, warranty } = req.body;
+      const { name, stock, price, commission, warranty } = req.body;
       if (!name || name.trim() === "") {
         return res.status(400).json({ error: "Product name is required." });
       }
@@ -43,6 +43,7 @@ export default async function handler(req, res) {
         name: name.trim(),
         stock: Number(stock) || 0,
         price: Number(price) || 0,
+        commission: Number(commission) || 0,
         warranty: (warranty || "").trim(),
       });
 

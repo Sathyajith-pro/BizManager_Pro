@@ -14,6 +14,7 @@ const EMPTY_ORDER_FORM = {
   deliveryStatus: "Pending",
   cashReceived: "No",
   note: "",
+  agent: "",
 };
 
 const EMPTY_EXPENSE_FORM = {
@@ -34,6 +35,7 @@ const EMPTY_PRODUCT_FORM = {
   name: "",
   stock: 0,
   price: "",
+  commission: "",
   warranty: "",
 };
 
@@ -171,7 +173,7 @@ export default function Home() {
     };
   }, []);
 
-  const effectiveView = currentUser?.role === "packer" ? "packer" : viewMode;
+  const effectiveView = currentUser?.role === "packer" ? "packer" : (currentUser?.role === "agent" ? "agent" : viewMode);
 
   // Initialize Session
   useEffect(() => {
@@ -462,6 +464,127 @@ export default function Home() {
       image: { type: "jpeg", quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+    };
+
+    window.html2pdf().from(element).set(options).save();
+  };
+
+  const handleDownloadOrdersReport = () => {
+    if (!window.html2pdf) {
+      alert("PDF library is still loading. Please try again in a few seconds.");
+      return;
+    }
+
+    const element = document.createElement("div");
+    element.style.fontFamily = "'Inter', 'Segoe UI', sans-serif";
+    element.style.color = "#1e293b";
+    element.style.padding = "20px";
+
+    const totalValue = filteredOrders.reduce((sum, o) => sum + (o.totalPrice || o.price || 0), 0);
+    const statusCounts = filteredOrders.reduce((acc, o) => {
+      const status = o.deliveryStatus || o.status || "Pending";
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, { Pending: 0, Delivered: 0, Return: 0, Completed: 0 });
+
+    const statusBreakdownRows = Object.keys(statusCounts).map(status => `
+      <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color: #475569;">
+        <span>${status}:</span>
+        <span style="font-weight: bold;">${statusCounts[status]} orders</span>
+      </div>
+    `).join("");
+
+    const orderRows = filteredOrders.map(o => {
+      const itemsString = (o.items && o.items.length > 0) 
+        ? o.items.map(it => `${it.itemName} (x${it.quantity})`).join(", ")
+        : `Product (x${o.pieces || 1})`;
+
+      return `
+        <tr style="border-bottom: 1px solid #cbd5e1; page-break-inside: avoid;">
+          <td style="padding: 10px 0; font-size: 12px; font-family: monospace;">${o.orderId || "LEGACY"}</td>
+          <td style="padding: 10px 0; font-size: 12px;">${new Date(o.dateTime || Date.now()).toLocaleDateString()}</td>
+          <td style="padding: 10px 0; font-size: 12px;">
+            <div style="font-weight: bold;">${o.name}</div>
+            <div style="font-size: 11px; color: #64748b;">${o.phoneNumber || ""}</div>
+            <div style="font-size: 11px; color: #64748b; font-style: italic;">${o.address || ""}</div>
+          </td>
+          <td style="padding: 10px 0; font-size: 12px; max-width: 200px; word-wrap: break-word;">${itemsString}</td>
+          <td style="padding: 10px 0; text-align: right; font-size: 12px; font-weight: bold;">Rs. ${(o.totalPrice || o.price || 0).toLocaleString()}</td>
+          <td style="padding: 10px 0; text-align: center; font-size: 12px;">
+            <span style="padding: 2px 6px; font-size: 11px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold;">
+              ${o.deliveryStatus || "Pending"}
+            </span>
+          </td>
+          <td style="padding: 10px 0; text-align: center; font-size: 12px;">
+            <span style="padding: 2px 6px; font-size: 11px; background: ${o.cashReceived === "Yes" ? "#dcfce7" : "#fee2e2"}; color: ${o.cashReceived === "Yes" ? "#166534" : "#991b1b"}; border-radius: 4px; font-weight: bold;">
+              ${o.cashReceived === "Yes" ? "Paid" : "Unpaid"}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    element.innerHTML = `
+      <div style="border: 2px solid #333333; padding: 25px; border-radius: 8px;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #333333; padding-bottom: 15px;">
+          <div>
+            <h1 style="margin: 0; font-size: 26px; color: #1e293b; font-weight: 800; letter-spacing: -0.5px;">GEOLEX STORE</h1>
+            <p style="margin: 3px 0 0 0; font-size: 12px; color: #64748b;">No 52, New Shopping Complex, Imaduwa.</p>
+            <p style="margin: 1px 0 0 0; font-size: 12px; color: #64748b;">Orders Log Summary Report</p>
+          </div>
+          <div style="text-align: right;">
+            <h2 style="margin: 0; font-size: 18px; color: #475569; font-weight: 700;">ORDERS SUMMARY</h2>
+            <p style="margin: 3px 0 0 0; font-size: 12px; color: #64748b;">Date Generated: ${new Date().toLocaleDateString()}</p>
+          </div>
+        </div>
+
+        <!-- Summary Statistics Block -->
+        <div style="margin: 20px 0; display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; padding: 15px; background: #f8fafc; border-radius: 6px; border: 1px solid #cbd5e1;">
+          <div>
+            <h3 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">Status Breakdown:</h3>
+            ${statusBreakdownRows}
+          </div>
+          <div style="text-align: right; display: flex; flex-direction: column; justify-content: center; align-items: flex-end;">
+            <p style="margin: 0; font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: bold;">Total Orders Value:</p>
+            <p style="margin: 4px 0 0 0; font-size: 24px; font-weight: 900; color: #10b981;">Rs. ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+            <p style="margin: 2px 0 0 0; font-size: 12px; color: #64748b;">Total Orders Found: ${filteredOrders.length}</p>
+          </div>
+        </div>
+
+        <!-- Table of Orders -->
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+          <thead>
+            <tr style="border-bottom: 2px solid #333333; text-align: left;">
+              <th style="padding: 8px 0; font-size: 12px; text-transform: uppercase; color: #64748b; width: 80px;">Order ID</th>
+              <th style="padding: 8px 0; font-size: 12px; text-transform: uppercase; color: #64748b; width: 90px;">Date</th>
+              <th style="padding: 8px 0; font-size: 12px; text-transform: uppercase; color: #64748b; width: 140px;">Customer</th>
+              <th style="padding: 8px 0; font-size: 12px; text-transform: uppercase; color: #64748b;">Items</th>
+              <th style="padding: 8px 0; text-align: right; font-size: 12px; text-transform: uppercase; color: #64748b; width: 100px;">Total</th>
+              <th style="padding: 8px 0; text-align: center; font-size: 12px; text-transform: uppercase; color: #64748b; width: 90px;">Status</th>
+              <th style="padding: 8px 0; text-align: center; font-size: 12px; text-transform: uppercase; color: #64748b; width: 80px;">Cash</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orderRows}
+          </tbody>
+        </table>
+
+        <!-- Footer -->
+        <div style="margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 15px; text-align: center;">
+          <p style="margin: 0; font-size: 13px; font-weight: bold; color: #475569;">End of Summary Report</p>
+          <p style="margin: 3px 0 0 0; font-size: 11px; color: #94a3b8;">This is a system generated document.</p>
+        </div>
+      </div>
+    `;
+
+    const options = {
+      margin: 10,
+      filename: `Orders_Summary_Report_${new Date().toISOString().split("T")[0]}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["css", "legacy"] }
     };
 
     window.html2pdf().from(element).set(options).save();
@@ -770,6 +893,7 @@ export default function Home() {
       deliveryStatus: order.deliveryStatus || order.status || "Pending",
       cashReceived: order.cashReceived || (order.status === "Approved" ? "Yes" : "No"),
       note: order.note || "",
+      agent: order.agent?._id || order.agent || "",
     });
     setEditingOrderId(order._id);
     setShowOrderForm(true);
@@ -963,13 +1087,13 @@ export default function Home() {
     e.preventDefault();
     setFormError("");
 
-    const { name, stock, price, warranty } = productForm;
+    const { name, stock, price, commission, warranty } = productForm;
     if (!name || name.trim() === "") {
       setFormError("Product name is required.");
       return;
     }
-    if (Number(price) < 0 || Number(stock) < 0) {
-      setFormError("Stock and price must be non-negative.");
+    if (Number(price) < 0 || Number(stock) < 0 || Number(commission || 0) < 0) {
+      setFormError("Stock, price and commission must be non-negative.");
       return;
     }
 
@@ -1008,6 +1132,7 @@ export default function Home() {
       name: prod.name,
       stock: prod.stock,
       price: prod.price,
+      commission: prod.commission || 0,
       warranty: prod.warranty || "",
     });
     setEditingProductId(prod._id);
@@ -1261,6 +1386,45 @@ export default function Home() {
   const packerPendingOrders = orders.filter((o) => getOrderStatus(o) === "Pending");
   const packerCompletedOrders = orders.filter((o) => getOrderStatus(o) !== "Pending");
 
+  const topScrollRef = useRef(null);
+  const bottomScrollRef = useRef(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+
+  const handleTopScroll = () => {
+    if (topScrollRef.current && bottomScrollRef.current) {
+      if (bottomScrollRef.current.scrollLeft !== topScrollRef.current.scrollLeft) {
+        bottomScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+      }
+    }
+  };
+
+  const handleBottomScroll = () => {
+    if (topScrollRef.current && bottomScrollRef.current) {
+      if (topScrollRef.current.scrollLeft !== bottomScrollRef.current.scrollLeft) {
+        topScrollRef.current.scrollLeft = bottomScrollRef.current.scrollLeft;
+      }
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (bottomScrollRef.current) {
+        setTableScrollWidth(bottomScrollRef.current.scrollWidth);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [orders, filteredOrders, activeTab]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (bottomScrollRef.current) {
+        setTableScrollWidth(bottomScrollRef.current.scrollWidth);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   if (!token) {
     return (
       <div className={styles.loginPage}>
@@ -1315,6 +1479,12 @@ export default function Home() {
             display: block !important;
             box-sizing: border-box !important;
           }
+          #print-container span,
+          #print-container strong,
+          #print-container b,
+          #print-container a {
+            display: inline !important;
+          }
           /* Custom print container setup */
           #print-container {
             position: absolute !important;
@@ -1324,7 +1494,7 @@ export default function Home() {
             padding: 0 !important;
           }
           /* Outer rounded card setup */
-          .thermalLabelCard {
+           .thermalLabelCard {
             width: 145mm !important;
             height: 52mm !important;
             max-height: 52mm !important;
@@ -1337,6 +1507,21 @@ export default function Home() {
             overflow: hidden !important;
             page-break-inside: avoid !important;
             page-break-after: avoid !important;
+            position: relative !important;
+          }
+          .thermalLabelItemSummary {
+            position: absolute !important;
+            top: 4px !important;
+            right: 8px !important;
+            font-size: 8pt !important;
+            font-weight: bold !important;
+            color: #000000 !important;
+            max-width: 160px !important;
+            text-align: right !important;
+            line-height: 1.1 !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            display: block !important;
           }
           /* High-contrast top header bar for COD */
           .thermalLabelCod {
@@ -1405,14 +1590,20 @@ export default function Home() {
             display: inline !important;
             margin-left: 6px !important;
           }
+          .thermalLabelPhoneInlineNormal {
+            font-weight: normal !important;
+            font-size: 11pt !important;
+            display: inline !important;
+            margin-left: 6px !important;
+          }
           /* Bill Thermal print styles */
           .thermalBillCard {
             width: 80mm !important;
-            font-family: 'Courier New', Courier, monospace !important;
-            font-size: 10pt !important;
+            font-family: 'Inter', -apple-system, sans-serif !important;
+            font-size: 11.5pt !important;
             background: #ffffff !important;
             color: #000000 !important;
-            padding: 4mm !important;
+            padding: 5mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
             page-break-after: avoid !important;
@@ -1588,6 +1779,21 @@ export default function Home() {
                     required
                   />
                 </div>
+                {currentUser?.role === "admin" && (
+                  <div className={styles.field}>
+                    <label className={styles.label}>Agent / Order Taker (Optional)</label>
+                    <select
+                      className={styles.select}
+                      value={orderForm.agent || ""}
+                      onChange={(e) => setOrderForm({ ...orderForm, agent: e.target.value })}
+                    >
+                      <option value="">-- No Agent (Direct Order) --</option>
+                      {users.filter(u => u.role === "agent").map((u) => (
+                        <option key={u._id} value={u._id}>{u.name} (@{u.username})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className={`${styles.field} ${styles.fieldWide}`}>
                   <label className={styles.label}>Note</label>
                   <input className={styles.input} value={orderForm.note} onChange={(e) => setOrderForm({ ...orderForm, note: e.target.value })} placeholder="Additional details" />
@@ -1663,6 +1869,7 @@ export default function Home() {
                   <select className={styles.select} value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
                     <option value="packer">📦 Packer (Confirm packing only)</option>
                     <option value="admin">👑 Admin (Full dashboard access)</option>
+                    <option value="agent">🧑‍💼 Agent (Order entry & commission)</option>
                   </select>
                 </div>
               </div>
@@ -1694,6 +1901,10 @@ export default function Home() {
                   <input className={styles.input} type="number" step="0.01" placeholder="0.00" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} required />
                 </div>
                 <div className={styles.field}>
+                  <label className={styles.label}>Agent Commission (Rs.)</label>
+                  <input className={styles.input} type="number" step="0.01" placeholder="0.00" value={productForm.commission} onChange={(e) => setProductForm({ ...productForm, commission: e.target.value })} required />
+                </div>
+                <div className={styles.field}>
                   <label className={styles.label}>Warranty</label>
                   <input className={styles.input} value={productForm.warranty} onChange={(e) => setProductForm({ ...productForm, warranty: e.target.value })} placeholder="E.g. 6 Months / 1 Year" />
                 </div>
@@ -1719,7 +1930,7 @@ export default function Home() {
                     <span className={`${styles.kpiValue} ${stats.netProfit >= 0 ? styles.positive : styles.negative}`}>
                       Rs. {stats.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
-                    <span className={styles.kpiMeta}>Revenue minus logged expenses</span>
+                    <span className={styles.kpiMeta}>Revenue minus expenses & commissions</span>
                   </div>
                   <div className={styles.kpiCard}>
                     <span className={styles.kpiLabel}>Total Revenue</span>
@@ -1734,6 +1945,13 @@ export default function Home() {
                       Rs. {stats.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className={styles.kpiMeta}>Total spent across {stats.expenseCount} logs</span>
+                  </div>
+                  <div className={styles.kpiCard}>
+                    <span className={styles.kpiLabel}>Agent Commissions</span>
+                    <span className={styles.kpiValue} style={{ color: "#6366f1" }}>
+                      Rs. {(stats.totalCommissions || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className={styles.kpiMeta}>Total commission paid/accrued</span>
                   </div>
                   <div className={`${styles.kpiCard} ${styles.kpiCardOrders}`}>
                     <span className={styles.kpiLabel}>Total Gross Sales</span>
@@ -1825,26 +2043,52 @@ export default function Home() {
                   <span className={styles.sectionTitle} style={{ margin: 0 }}>Orders Log</span>
                   <span className={styles.count}>{filteredOrders.length} orders found</span>
                 </div>
-                <button
-                  className={styles.addBtn}
-                  style={{ margin: 0, padding: "6px 12px", fontSize: "13px" }}
-                  onClick={() => {
-                    setShowOrderForm((v) => !v);
-                    setShowExpenseForm(false);
-                    setShowUserForm(false);
-                    setShowProductForm(false);
-                    setFormError("");
-                    setEditingOrderId(null);
-                    setOrderForm(EMPTY_ORDER_FORM);
-                    if (!showOrderForm) window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                >
-                  {showOrderForm ? "✕ Close Form" : "+ New Order"}
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    className={styles.addBtn}
+                    style={{ background: "linear-gradient(135deg, #10b981, #059669)", margin: 0, padding: "6px 12px", fontSize: "13px" }}
+                    onClick={handleDownloadOrdersReport}
+                    disabled={filteredOrders.length === 0}
+                  >
+                    📄 Download PDF Report
+                  </button>
+                  <button
+                    className={styles.addBtn}
+                    style={{ margin: 0, padding: "6px 12px", fontSize: "13px" }}
+                    onClick={() => {
+                      setShowOrderForm((v) => !v);
+                      setShowExpenseForm(false);
+                      setShowUserForm(false);
+                      setShowProductForm(false);
+                      setFormError("");
+                      setEditingOrderId(null);
+                      setOrderForm(EMPTY_ORDER_FORM);
+                      if (!showOrderForm) window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                  >
+                    {showOrderForm ? "✕ Close Form" : "+ New Order"}
+                  </button>
+                </div>
               </div>
 
+              {/* Top Scrollbar Helper for Desktop */}
+              {filteredOrders.length > 0 && (
+                <div 
+                  ref={topScrollRef} 
+                  onScroll={handleTopScroll} 
+                  className={styles.desktopTableOnly}
+                  style={{ overflowX: "auto", overflowY: "hidden", width: "100%", height: "16px", marginBottom: "4px" }}
+                >
+                  <div style={{ width: `${tableScrollWidth}px`, height: "1px" }} />
+                </div>
+              )}
+
               {/* Desktop Table */}
-              <div className={`${styles.tableWrap} ${styles.desktopTableOnly}`}>
+              <div 
+                ref={bottomScrollRef} 
+                onScroll={handleBottomScroll} 
+                className={`${styles.tableWrap} ${styles.desktopTableOnly}`}
+              >
                 <table className={styles.table}>
                   <thead>
                     <tr>
@@ -1853,6 +2097,7 @@ export default function Home() {
                       <th>Customer Details</th>
                       <th>Product Items (Qty)</th>
                       <th>Total Value</th>
+                      <th>Agent & Commission</th>
                       <th>Courier & Tracking</th>
                       <th>Delivery Status</th>
                       <th>Cash Recv?</th>
@@ -1862,9 +2107,9 @@ export default function Home() {
                   </thead>
                   <tbody>
                     {loadingOrders ? (
-                      <tr><td colSpan={10} className={styles.emptyCell}><div className={styles.spinner} style={{ margin: 0 }} /> Loading...</td></tr>
+                      <tr><td colSpan={11} className={styles.emptyCell}><div className={styles.spinner} style={{ margin: 0 }} /> Loading...</td></tr>
                     ) : filteredOrders.length === 0 ? (
-                      <tr><td colSpan={10} className={styles.emptyCell}>No orders matched your filters.</td></tr>
+                      <tr><td colSpan={11} className={styles.emptyCell}>No orders matched your filters.</td></tr>
                     ) : (
                       filteredOrders.map((order) => {
                         const statusClass = 
@@ -1894,6 +2139,16 @@ export default function Home() {
                               </div>
                             </td>
                             <td style={{ fontWeight: "700", whiteSpace: "nowrap" }}>Rs. {(order.totalPrice || order.price || 0).toLocaleString()}</td>
+                            <td>
+                              {order.agent ? (
+                                 <div>
+                                   <div style={{ fontWeight: "600", color: "var(--primary)" }}>{order.agent.name || order.agent.username}</div>
+                                   <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "500" }}>Com: Rs. {(order.totalCommission || 0).toLocaleString()}</div>
+                                 </div>
+                              ) : (
+                                 <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>Direct Order</span>
+                              )}
+                            </td>
                             <td>
                               {order.courier ? (
                                 <div>
@@ -1973,6 +2228,12 @@ export default function Home() {
                             <div className={styles.label} style={{ fontSize: "9px" }}>Total Value:</div>
                             <div style={{ fontWeight: "850", fontSize: "15px", color: "var(--primary)" }}>Rs. {(order.totalPrice || order.price || 0).toLocaleString()}</div>
                           </div>
+                          {order.agent && (
+                            <div>
+                              <div className={styles.label} style={{ fontSize: "9px" }}>Agent (Com.):</div>
+                              <div style={{ fontWeight: "600", fontSize: "12px", color: "var(--primary)" }}>{order.agent.name || order.agent.username} (Rs. {order.totalCommission})</div>
+                            </div>
+                          )}
                           <div>
                             <div className={styles.label} style={{ fontSize: "9px" }}>Cash Received:</div>
                             <span style={{ cursor: "pointer", display: "inline-block", marginTop: "2px" }} onClick={() => handleQuickStatusChange(order._id, { cashReceived: (order.cashReceived === "Yes" ? "No" : "Yes") })} className={`${styles.badge} ${order.cashReceived === "Yes" ? styles.badgeYes : styles.badgeNo}`}>{order.cashReceived === "Yes" ? "Yes" : "No"}</span>
@@ -2116,35 +2377,54 @@ export default function Home() {
 
         {/* ── TAB 4: USER ACCOUNTS ── */}
         {activeTab === "users" && effectiveView === "admin" && (
-          <div className={styles.tableCard}>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Full Name</th>
-                    <th>Username</th>
-                    <th>User Role</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingUsers ? (
-                    <tr><td colSpan={4} className={styles.emptyCell}>Loading...</td></tr>
-                  ) : users.map((u) => (
-                    <tr key={u._id}>
-                      <td style={{ fontWeight: "600" }}>{u.name}</td>
-                      <td style={{ fontFamily: "monospace", color: "var(--primary)", fontWeight: "600" }}>@{u.username}</td>
-                      <td><span className={styles.badge}>{u.role}</span></td>
-                      <td>
-                        <div className={styles.actionButtons}>
-                          <button className={styles.editBtn} onClick={() => initiateUserEdit(u)}>Edit</button>
-                          {u.username !== "admin" && <button className={styles.deleteBtn} onClick={() => handleUserDelete(u._id)}>Delete</button>}
-                        </div>
-                      </td>
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className={styles.sectionTitle} style={{ margin: 0 }}>👥 User Accounts</span>
+              <button
+                className={styles.addBtn}
+                style={{ background: "linear-gradient(135deg, #10b981, #059669)", margin: 0 }}
+                onClick={() => {
+                  setFormError("");
+                  setEditingUserId(null);
+                  setUserForm(EMPTY_USER_FORM);
+                  setShowUserForm(!showUserForm);
+                  if (!showUserForm) window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                {showUserForm ? "✕ Close Form" : "➕ Create User Account"}
+              </button>
+            </div>
+            
+            <div className={styles.tableCard}>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Full Name</th>
+                      <th>Username</th>
+                      <th>User Role</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {loadingUsers ? (
+                      <tr><td colSpan={4} className={styles.emptyCell}>Loading...</td></tr>
+                    ) : users.map((u) => (
+                      <tr key={u._id}>
+                        <td style={{ fontWeight: "600" }}>{u.name}</td>
+                        <td style={{ fontFamily: "monospace", color: "var(--primary)", fontWeight: "600" }}>@{u.username}</td>
+                        <td><span className={styles.badge}>{u.role}</span></td>
+                        <td>
+                          <div className={styles.actionButtons}>
+                            <button className={styles.editBtn} onClick={() => initiateUserEdit(u)}>Edit</button>
+                            {u.username !== "admin" && <button className={styles.deleteBtn} onClick={() => handleUserDelete(u._id)}>Delete</button>}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -2212,15 +2492,16 @@ export default function Home() {
                         <th>Product Name</th>
                         <th>Current Stock</th>
                         <th>Default Price</th>
+                        <th>Commission</th>
                         <th>Warranty</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loadingProducts ? (
-                        <tr><td colSpan={5} className={styles.emptyCell}>Loading inventory...</td></tr>
+                        <tr><td colSpan={6} className={styles.emptyCell}>Loading inventory...</td></tr>
                       ) : products.length === 0 ? (
-                        <tr><td colSpan={5} className={styles.emptyCell}>No products in inventory. Click "+ Add Product" to create one.</td></tr>
+                        <tr><td colSpan={6} className={styles.emptyCell}>No products in inventory. Click "+ Add Product" to create one.</td></tr>
                       ) : (
                         products.map((prod) => (
                           <tr key={prod._id} className={prod.stock <= 0 ? styles.rowReturn : prod.stock <= 5 ? styles.rowPending : ""}>
@@ -2229,6 +2510,7 @@ export default function Home() {
                               {prod.stock} {prod.stock <= 0 ? " ⚠️ Out of Stock" : prod.stock <= 5 ? " ⚠️ Low Stock" : ""}
                             </td>
                             <td style={{ fontWeight: "700" }}>Rs. {Number(prod.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ fontWeight: "700", color: "#6b7280" }}>Rs. {Number(prod.commission || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                             <td style={{ fontWeight: "600", color: "var(--primary)" }}>{prod.warranty || "No Warranty"}</td>
                             <td>
                               <div className={styles.actionButtons}>
@@ -2548,6 +2830,31 @@ export default function Home() {
                         <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 8px 4px 8px", fontSize: "16px", fontWeight: "700" }}>
                           Total Cash-Out Value: Rs. {orders.filter(o => settlementForm.orderIds.includes(o._id)).reduce((sum, o) => sum + (o.totalPrice || o.price || 0), 0).toLocaleString()}
                         </div>
+                        {(() => {
+                          const selectedOrders = orders.filter(o => settlementForm.orderIds.includes(o._id));
+                          const commissionGroup = {};
+                          selectedOrders.forEach(o => {
+                            if (o.agent) {
+                              const agentName = o.agent.name || o.agent.username || "Unknown Agent";
+                              commissionGroup[agentName] = (commissionGroup[agentName] || 0) + (o.totalCommission || 0);
+                            }
+                          });
+                          const agentCommissionEntries = Object.entries(commissionGroup);
+                          if (agentCommissionEntries.length === 0) return null;
+                          return (
+                            <div style={{ borderTop: "1px solid var(--border)", marginTop: "12px", padding: "12px 8px 4px 8px" }}>
+                              <strong style={{ fontSize: "14px", color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>🤝 Commission Payouts Summary:</strong>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                {agentCommissionEntries.map(([name, val]) => (
+                                  <div key={name} style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "var(--text)" }}>
+                                    <span>{name}</span>
+                                    <span style={{ fontWeight: "700" }}>Rs. {val.toLocaleString()}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -2584,15 +2891,16 @@ export default function Home() {
                       <th>Settlement Date</th>
                       <th>Courier Name</th>
                       <th>Orders Settled</th>
+                      <th>Commission Payouts</th>
                       <th>Total Amount Cash-Out</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loadingSettlements ? (
-                      <tr><td colSpan={5} className={styles.emptyCell}>Loading payouts log...</td></tr>
+                      <tr><td colSpan={6} className={styles.emptyCell}>Loading payouts log...</td></tr>
                     ) : settlements.length === 0 ? (
-                      <tr><td colSpan={5} className={styles.emptyCell}>No cash-outs logged yet.</td></tr>
+                      <tr><td colSpan={6} className={styles.emptyCell}>No cash-outs logged yet.</td></tr>
                     ) : (
                       settlements.map((setObj) => (
                         <tr key={setObj._id}>
@@ -2618,6 +2926,30 @@ export default function Home() {
                               ))}
                             </div>
                           </td>
+                          <td>
+                            {(() => {
+                              const group = {};
+                              (setObj.orders || []).forEach(o => {
+                                if (o && o.agent) {
+                                  const agentName = o.agent.name || o.agent.username || "Unknown Agent";
+                                  group[agentName] = (group[agentName] || 0) + (o.totalCommission || 0);
+                                }
+                              });
+                              const entries = Object.entries(group);
+                              if (entries.length === 0) {
+                                return <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>No Agent Commission</span>;
+                              }
+                              return (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                  {entries.map(([name, val]) => (
+                                    <div key={name} style={{ fontSize: "12px", color: "var(--text)" }}>
+                                      <strong>{name}</strong>: Rs. {val.toLocaleString()}
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </td>
                           <td style={{ fontWeight: "700", color: "var(--approved)" }}>Rs. {Number(setObj.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                           <td>
                             <div className={styles.actionButtons}>
@@ -2635,6 +2967,225 @@ export default function Home() {
                                 Revert / Delete
                               </button>
                             </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── AGENT PORTAL (Agent view) ── */}
+        {effectiveView === "agent" && (
+          <div>
+            <div className={styles.headerInner} style={{ padding: "0 0 16px 0", borderBottom: "1px solid var(--border)", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className={styles.sectionTitle} style={{ margin: 0 }}>🧑‍💼 Agent Order Entry Portal</h2>
+                <p className={styles.subtitle} style={{ fontSize: "14px" }}>Manage orders and track your commissions.</p>
+              </div>
+              <div>
+                <button
+                  className={styles.addBtn}
+                  onClick={() => {
+                    setOrderForm(EMPTY_ORDER_FORM);
+                    setShowOrderForm(true);
+                    setEditingOrderId(null);
+                  }}
+                >
+                  ➕ Add New Order
+                </button>
+              </div>
+            </div>
+
+            {/* Agent KPI Summary Card */}
+            {(() => {
+              const myOrders = orders;
+              const totalOrders = myOrders.length;
+              const totalEarned = myOrders.reduce((sum, o) => sum + (o.totalCommission || 0), 0);
+              const pendingPayout = myOrders.filter(o => o.cashReceived === "No").reduce((sum, o) => sum + (o.totalCommission || 0), 0);
+              const settledPayout = myOrders.filter(o => o.cashReceived === "Yes").reduce((sum, o) => sum + (o.totalCommission || 0), 0);
+              return (
+                <div className={styles.kpiGrid} style={{ marginBottom: "24px" }}>
+                  <div className={styles.kpiCard}>
+                    <span className={styles.kpiLabel}>Total Orders Entered</span>
+                    <span className={styles.kpiValue} style={{ color: "var(--primary)" }}>{totalOrders}</span>
+                    <span className={styles.kpiMeta}>Orders submitted to system</span>
+                  </div>
+                  <div className={`${styles.kpiCard} ${styles.kpiCardProfit}`}>
+                    <span className={styles.kpiLabel}>Total Commissions Earned</span>
+                    <span className={styles.kpiValue} style={{ color: "var(--approved)" }}>Rs. {totalEarned.toLocaleString()}</span>
+                    <span className={styles.kpiMeta}>Accumulated earnings</span>
+                  </div>
+                  <div className={styles.kpiCard}>
+                    <span className={styles.kpiLabel}>Pending Payout</span>
+                    <span className={styles.kpiValue} style={{ color: "var(--pending)" }}>Rs. {pendingPayout.toLocaleString()}</span>
+                    <span className={styles.kpiMeta}>From cash-pending orders</span>
+                  </div>
+                  <div className={styles.kpiCard}>
+                    <span className={styles.kpiLabel}>Settled (Paid) Payout</span>
+                    <span className={styles.kpiValue} style={{ color: "var(--primary)" }}>Rs. {settledPayout.toLocaleString()}</span>
+                    <span className={styles.kpiMeta}>From settled cash sheets</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Order Form for agent if showOrderForm is true */}
+            {showOrderForm && (
+              <div className={styles.formCard} style={{ marginBottom: "24px" }}>
+                <h2 className={styles.formTitle}>Add New Order</h2>
+                {formError && <div className={styles.formError}>{formError}</div>}
+                <form onSubmit={handleOrderSubmit} className={styles.form}>
+                  <div className={styles.formGrid}>
+                    <div className={styles.field}>
+                      <label className={styles.label}>Customer Name</label>
+                      <input className={styles.input} value={orderForm.name} onChange={(e) => setOrderForm({ ...orderForm, name: e.target.value })} placeholder="E.g. Deshan" required />
+                    </div>
+                    <div className={styles.field}>
+                      <label className={styles.label}>Phone Number</label>
+                      <input className={styles.input} value={orderForm.phoneNumber} onChange={(e) => setOrderForm({ ...orderForm, phoneNumber: e.target.value })} placeholder="E.g. 0771234567" />
+                    </div>
+                    <div className={`${styles.field} ${styles.fieldWide}`}>
+                      <label className={styles.label}>Delivery Address</label>
+                      <input className={styles.input} value={orderForm.address} onChange={(e) => setOrderForm({ ...orderForm, address: e.target.value })} placeholder="No. 12, Galle Road" required />
+                    </div>
+                  </div>
+
+                  <div className={styles.itemsSection}>
+                    <div className={styles.itemsHeader}>
+                      <label className={styles.label}>Order Items List</label>
+                      <button type="button" onClick={addItemRow} className={styles.addItemBtn}>+ Add Item Row</button>
+                    </div>
+                    {orderForm.items.map((item, index) => (
+                      <div key={index} className={styles.itemsGrid}>
+                        <div className={styles.field}>
+                          <label className={styles.label}>Product Item Name</label>
+                          <select
+                            className={styles.select}
+                            value={item.itemName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const selectedProd = products.find(p => p.name === val);
+                              setOrderForm((f) => {
+                                const updatedItems = [...f.items];
+                                updatedItems[index] = {
+                                  ...updatedItems[index],
+                                  itemName: val,
+                                  price: selectedProd ? selectedProd.price : updatedItems[index].price
+                                };
+                                return { ...f, items: updatedItems };
+                              });
+                            }}
+                            required
+                          >
+                            <option value="">-- Select Product --</option>
+                            {products.map((p) => (
+                              <option key={p._id} value={p.name}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className={styles.field}>
+                          <label className={styles.label}>Qty</label>
+                          <input className={styles.input} type="number" min="1" value={item.quantity} onChange={(e) => handleItemChange(index, "quantity", Number(e.target.value))} required />
+                        </div>
+                        <div className={styles.field}>
+                          <label className={styles.label}>Unit Price (Rs.)</label>
+                          <input className={styles.input} type="number" step="0.01" placeholder="0.00" value={item.price} onChange={(e) => handleItemChange(index, "price", e.target.value)} required />
+                        </div>
+                        {orderForm.items.length > 1 && (
+                          <button type="button" onClick={() => removeItemRow(index)} className={styles.removeItemBtn} title="Remove product">✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className={styles.formGrid}>
+                    <div className={styles.field}>
+                      <label className={styles.label}>Total Order Price (Rs.) <span style={{ color: "red" }}>*</span></label>
+                      <input
+                        className={styles.input}
+                        type="number"
+                        step="0.01"
+                        placeholder={`Calculated total: Rs. ${orderForm.items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0)}`}
+                        value={orderForm.totalPrice}
+                        onChange={(e) => setOrderForm({ ...orderForm, totalPrice: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className={`${styles.field} ${styles.fieldWide}`}>
+                      <label className={styles.label}>Note</label>
+                      <input className={styles.input} value={orderForm.note} onChange={(e) => setOrderForm({ ...orderForm, note: e.target.value })} placeholder="Additional details" />
+                    </div>
+                  </div>
+
+                  <div className={styles.formActions}>
+                    <button type="button" className={styles.cancelBtn} onClick={() => { setShowOrderForm(false); setFormError(""); setOrderForm(EMPTY_ORDER_FORM); }}>Cancel</button>
+                    <button type="submit" className={styles.submitBtn} disabled={submitting}>{submitting ? "Saving…" : "Add Order"}</button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* List of Agent's Orders */}
+            <div className={styles.tableCard}>
+              <div className={styles.tableHeader}>
+                <div className={styles.tableHeaderInner}>
+                  <span className={styles.sectionTitle} style={{ margin: 0 }}>My Orders</span>
+                  <span className={styles.count}>{orders.length} orders total</span>
+                </div>
+              </div>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Date</th>
+                      <th>Customer Details</th>
+                      <th>Items (Qty)</th>
+                      <th>Total Value</th>
+                      <th>Commission</th>
+                      <th>Delivery Status</th>
+                      <th>Settle Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.length === 0 ? (
+                      <tr><td colSpan={8} className={styles.emptyCell}>No orders entered yet. Click "Add New Order" to start.</td></tr>
+                    ) : (
+                      orders.map((o) => (
+                        <tr key={o._id}>
+                          <td className={styles.itemNum}>{o.orderId || "LEGACY"}</td>
+                          <td className={styles.dateCell}>{formatDateTime(o.dateTime)}</td>
+                          <td>
+                            <div style={{ fontWeight: "600" }}>{o.name}</div>
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{o.phoneNumber}</div>
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{o.address}</div>
+                          </td>
+                          <td>
+                            {o.items?.map((it, idx) => (
+                              <div key={idx} style={{ fontSize: "12px" }}>• {it.itemName} (x{it.quantity})</div>
+                            )) || "Product"}
+                          </td>
+                          <td style={{ fontWeight: "700" }}>Rs. {(o.totalPrice || o.price || 0).toLocaleString()}</td>
+                          <td style={{ fontWeight: "700", color: "var(--approved)" }}>Rs. {(o.totalCommission || 0).toLocaleString()}</td>
+                          <td>
+                            <span className={`${styles.badge} ${
+                              o.deliveryStatus === "Completed" || o.status === "Approved" ? styles.badgeYes :
+                              o.deliveryStatus === "Return" ? styles.badgeNo :
+                              styles.badgePending
+                            }`}>
+                              {o.deliveryStatus || o.status || "Pending"}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`${styles.badge} ${o.cashReceived === "Yes" ? styles.badgeYes : styles.badgeNo}`}>
+                              {o.cashReceived === "Yes" ? "Paid" : "Unsettled"}
+                            </span>
                           </td>
                         </tr>
                       ))
@@ -2725,6 +3276,13 @@ export default function Home() {
         <div id="print-container">
           {printMode === "label" ? (
             <div className="thermalLabelCard">
+              <div className="thermalLabelItemSummary">
+                {printOrder.items?.map((it, idx) => (
+                  <div key={idx}>
+                    • {it.itemName} ({it.quantity})
+                  </div>
+                )) || <div>• Product</div>}
+              </div>
               <div className="thermalLabelCod">
                 <span className="thermalLabelCodLeft">C.O.D</span>
                 <span className="thermalLabelCodRight" style={{ textAlign: "left", display: "block", width: "100%" }}>
@@ -2736,15 +3294,15 @@ export default function Home() {
                 <div className="thermalLabelRowBlock thermalLabelFromBlock">
                   <span className="thermalLabelTag">From:</span>
                   <span className="thermalLabelLineInline">Geolex Store, No 52, New Shopping Complex, Imaduwa.</span>
-                  <span className="thermalLabelPhoneInline">0740136448 / 0776171360</span>
+                  <span className="thermalLabelPhoneInlineNormal">0740136448 / 0776171360</span>
                 </div>
                 {/* TO Section */}
                 <div className="thermalLabelRowBlock">
                   <span className="thermalLabelTag">To:</span>
-                  <span className="thermalLabelLineInline" style={{ fontWeight: "bold" }}>{printOrder.name}, </span>
-                  <span className="thermalLabelLineInline">{printOrder.address}</span>
+                  <span className="thermalLabelLineInline">
+                    <span style={{ fontWeight: "bold" }}>{printOrder.name}</span> - {printOrder.address}
+                  </span>
                   <div style={{ marginTop: "2px" }}>
-                    <span className="thermalLabelTag">Tel:</span>
                     <span className="thermalLabelPhoneInline" style={{ fontSize: "12pt", marginLeft: "0" }}>{printOrder.phoneNumber}</span>
                   </div>
                 </div>
@@ -2753,28 +3311,28 @@ export default function Home() {
           ) : (
             <div className="thermalBillCard">
               <div style={{ textAlign: "center", marginBottom: "10px" }}>
-                <h2 style={{ margin: "0 0 2px 0", fontSize: "14pt", fontWeight: "bold", textTransform: "uppercase" }}>GEOLEX STORE</h2>
-                <p style={{ margin: "0", fontSize: "9pt", lineHeight: "1.2" }}>No 52, New Shopping Complex, Imaduwa.</p>
-                <p style={{ margin: "0", fontSize: "9pt", lineHeight: "1.2" }}>Tel: 0740136448 / 0776171360</p>
+                <h2 style={{ margin: "0 0 2px 0", fontSize: "16pt", fontWeight: "bold", textTransform: "uppercase" }}>GEOLEX STORE</h2>
+                <p style={{ margin: "0", fontSize: "10.5pt", lineHeight: "1.3" }}>No 52, New Shopping Complex, Imaduwa.</p>
+                <p style={{ margin: "0", fontSize: "10.5pt", lineHeight: "1.3", fontWeight: "bold" }}>Tel: 0740136448 / 0776171360</p>
               </div>
 
               <div className="thermalBillDivider"></div>
 
-              <div style={{ fontSize: "9pt", margin: "8px 0" }}>
+              <div style={{ fontSize: "11pt", margin: "10px 0", lineHeight: "1.4" }}>
                 <div><strong>Bill Date:</strong> {new Date(printOrder.dateTime || Date.now()).toLocaleString()}</div>
-                <div><strong>Order ID:</strong> {printOrder.orderId || "ORD-LEGACY"}</div>
+                <div><strong>Order ID:</strong> <strong style={{ color: "#000" }}>{printOrder.orderId || "ORD-LEGACY"}</strong></div>
                 <div><strong>Customer:</strong> {printOrder.name}</div>
                 {printOrder.phoneNumber && <div><strong>Tel:</strong> {printOrder.phoneNumber}</div>}
               </div>
 
               <div className="thermalBillDivider"></div>
 
-              <table style={{ width: "100%", borderCollapse: "collapse", margin: "8px 0", fontSize: "9.5pt" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", margin: "10px 0", fontSize: "11pt" }}>
                 <thead>
-                  <tr style={{ borderBottom: "1px dashed #000" }}>
-                    <th style={{ textAlign: "left", padding: "4px 0" }}>Item Description</th>
-                    <th style={{ textAlign: "center", padding: "4px 0", width: "40px" }}>Qty</th>
-                    <th style={{ textAlign: "right", padding: "4px 0", width: "80px" }}>Price</th>
+                  <tr style={{ borderBottom: "2px solid #000" }}>
+                    <th style={{ textAlign: "left", padding: "6px 0", fontWeight: "bold" }}>Item Description</th>
+                    <th style={{ textAlign: "center", padding: "6px 0", width: "40px", fontWeight: "bold" }}>Qty</th>
+                    <th style={{ textAlign: "right", padding: "6px 0", width: "90px", fontWeight: "bold" }}>Price</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2783,17 +3341,17 @@ export default function Home() {
                     quantity: printOrder.pieces || 1,
                     price: printOrder.price || 0
                   }]).map((item, idx) => (
-                    <tr key={idx} style={{ borderBottom: "1px dashed #ccc" }}>
-                      <td style={{ padding: "4px 0", verticalAlign: "top" }}>
-                        <div>{item.itemName}</div>
+                    <tr key={idx} style={{ borderBottom: "1px dashed #000" }}>
+                      <td style={{ padding: "6px 0", verticalAlign: "top" }}>
+                        <div style={{ fontWeight: "600" }}>{item.itemName}</div>
                         {products.find(p => p.name === item.itemName)?.warranty && (
-                          <div style={{ fontSize: "8pt", fontStyle: "italic", color: "#666" }}>
+                          <div style={{ fontSize: "9pt", fontStyle: "italic", color: "#444" }}>
                             Warranty: {products.find(p => p.name === item.itemName).warranty}
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: "4px 0", textAlign: "center", verticalAlign: "top" }}>{item.quantity}</td>
-                      <td style={{ padding: "4px 0", textAlign: "right", verticalAlign: "top" }}>
+                      <td style={{ padding: "6px 0", textAlign: "center", verticalAlign: "top" }}>{item.quantity}</td>
+                      <td style={{ padding: "6px 0", textAlign: "right", verticalAlign: "top", fontWeight: "600" }}>
                         Rs. {Number(item.price * item.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -2803,29 +3361,29 @@ export default function Home() {
 
               <div className="thermalBillDivider"></div>
 
-              <div style={{ margin: "8px 0", fontSize: "10pt" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", margin: "2px 0" }}>
+              <div style={{ margin: "10px 0", fontSize: "11pt" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", margin: "3px 0" }}>
                   <span>Subtotal:</span>
                   <span>Rs. {(printOrder.totalPrice || printOrder.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", margin: "4px 0", fontSize: "12pt", fontWeight: "bold" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", margin: "6px 0 3px 0", fontSize: "13.5pt", fontWeight: "bold", borderTop: "2px solid #000", paddingTop: "6px" }}>
                   <span>NET TOTAL:</span>
                   <span>Rs. {(printOrder.totalPrice || printOrder.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
               {printOrder.note && (
-                <div style={{ fontSize: "8pt", fontStyle: "italic", margin: "8px 0" }}>
+                <div style={{ fontSize: "9.5pt", fontStyle: "italic", margin: "8px 0", background: "#eee", padding: "4px 8px", borderRadius: "4px" }}>
                   Note: {printOrder.note}
                 </div>
               )}
 
               <div className="thermalBillDivider"></div>
 
-              <div style={{ textAlign: "center", marginTop: "15px", fontSize: "9pt" }}>
-                <div style={{ fontWeight: "bold" }}>Thank you for shopping with us!</div>
+              <div style={{ textAlign: "center", marginTop: "15px", fontSize: "10.5pt", lineHeight: "1.3" }}>
+                <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>Thank you for shopping with us!</div>
                 <div>Come Again!</div>
-                <div style={{ fontSize: "7pt", marginTop: "5px", color: "#666" }}>System Generated Bill</div>
+                <div style={{ fontSize: "8pt", marginTop: "8px", color: "#666" }}>System Generated Bill</div>
               </div>
             </div>
           )}

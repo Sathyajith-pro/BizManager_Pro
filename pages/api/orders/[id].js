@@ -1,5 +1,6 @@
 import dbConnect from "../../../lib/dbConnect";
 import Order from "../../../lib/Order";
+import Product from "../../../lib/Product";
 import { requireRole } from "../../../lib/auth";
 import { adjustStockForOrder } from "../../../lib/stockHelper";
 
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
     }
 
     try {
-      const { name, address, phoneNumber, items, totalPrice, trackingNumber, courier, deliveryStatus, cashReceived, note } = req.body;
+      const { name, address, phoneNumber, items, totalPrice, trackingNumber, courier, deliveryStatus, cashReceived, note, agent } = req.body;
       
       if (!name || !address || !items || !Array.isArray(items) || items.length === 0 || totalPrice === undefined || totalPrice === "" || isNaN(Number(totalPrice))) {
         return res.status(400).json({ error: "Customer name, address, at least one item, and Total Price (Rs.) are required." });
@@ -68,9 +69,38 @@ export default async function handler(req, res) {
 
       const finalTotalPrice = Number(totalPrice);
 
+      // Fetch commissions per product and attach to order items
+      const finalItems = await Promise.all(
+        items.map(async (item) => {
+          const product = await Product.findOne({ name: item.itemName });
+          const commPerUnit = product ? (product.commission || 0) : 0;
+          return {
+            itemName: item.itemName,
+            quantity: Number(item.quantity) || 1,
+            price: Number(item.price) || 0,
+            commission: commPerUnit * (Number(item.quantity) || 1),
+          };
+        })
+      );
+
+      const totalCommission = finalItems.reduce((sum, it) => sum + it.commission, 0);
+
       const order = await Order.findByIdAndUpdate(
         id,
-        { name, address, phoneNumber, items, totalPrice: finalTotalPrice, trackingNumber, courier, deliveryStatus, cashReceived, note },
+        { 
+          name, 
+          address, 
+          phoneNumber, 
+          items: finalItems, 
+          totalPrice: finalTotalPrice, 
+          agent: agent || null, 
+          totalCommission, 
+          trackingNumber, 
+          courier, 
+          deliveryStatus, 
+          cashReceived, 
+          note 
+        },
         { new: true, runValidators: true }
       );
       if (!order) return res.status(404).json({ error: "Order not found." });
